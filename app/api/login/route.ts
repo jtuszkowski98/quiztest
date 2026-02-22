@@ -8,7 +8,7 @@ import {
   signSession,
 } from "../../../lib/auth";
 import { messages } from "../../../lib/messages";
-import { rateLimit } from "../../../lib/rate-limit";
+import { rateLimit } from "../../../lib/ratelimit";
 
 export async function POST(req: Request) {
   try {

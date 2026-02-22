@@ -5,7 +5,10 @@ import { getCookieName, signSession } from "@/lib/auth";
 
 export async function POST(req: Request) {
   try {
-    const { email, password } = await req.json();
+    const body = await req.json().catch(() => null);
+
+    const email = body?.email ? String(body.email).toLowerCase().trim() : "";
+    const password = body?.password ? String(body.password) : "";
 
     if (!email || !password) {
       return NextResponse.json(
@@ -14,9 +17,20 @@ export async function POST(req: Request) {
       );
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: String(email).toLowerCase().trim() },
-    });
+    // 1) test DB
+    let user;
+    try {
+      user = await prisma.user.findUnique({ where: { email } });
+    } catch (e: any) {
+      // bezpieczny debug (bez URL, bez haseł)
+      return NextResponse.json(
+        {
+          error: "Błąd bazy danych (DB)",
+          detail: e?.name || "unknown",
+        },
+        { status: 500 }
+      );
+    }
 
     if (!user) {
       return NextResponse.json(
@@ -25,7 +39,20 @@ export async function POST(req: Request) {
       );
     }
 
-    const ok = await bcrypt.compare(String(password), user.password);
+    // 2) bcrypt
+    let ok = false;
+    try {
+      ok = await bcrypt.compare(password, user.password);
+    } catch (e: any) {
+      return NextResponse.json(
+        {
+          error: "Błąd porównania hasła (bcrypt)",
+          detail: e?.name || "unknown",
+        },
+        { status: 500 }
+      );
+    }
+
     if (!ok) {
       return NextResponse.json(
         { error: "Nieprawidłowy email lub hasło" },
@@ -33,26 +60,35 @@ export async function POST(req: Request) {
       );
     }
 
-    const token = await signSession({
-      sub: user.id,
-      email: user.email,
-    });
+    // 3) JWT
+    let token: string;
+    try {
+      token = await signSession({ sub: user.id, email: user.email });
+    } catch (e: any) {
+      return NextResponse.json(
+        {
+          error: "Błąd JWT (JWT_SECRET?)",
+          detail: e?.name || "unknown",
+        },
+        { status: 500 }
+      );
+    }
 
-    const response = NextResponse.json({ success: true });
+    const res = NextResponse.json({ message: "OK" }, { status: 200 });
 
-    response.cookies.set({
-      name: getCookieName(),
-      value: token,
+    res.cookies.set(getCookieName(), token, {
       httpOnly: true,
-      path: "/",
+      secure: true, // na Vercel zawsze HTTPS
       sameSite: "lax",
-      secure: false, // ← WAŻNE: localhost
+      path: "/",
       maxAge: 60 * 60 * 24 * 7,
     });
 
-    return response;
-  } catch (err) {
-    console.error(err);
-    return NextResponse.json({ error: "Błąd serwera" }, { status: 500 });
+    return res;
+  } catch (e: any) {
+    return NextResponse.json(
+      { error: "Błąd serwera", detail: e?.name || "unknown" },
+      { status: 500 }
+    );
   }
 }

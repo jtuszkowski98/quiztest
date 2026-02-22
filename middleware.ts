@@ -1,25 +1,22 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { verifySession, getCookieName } from "@/lib/auth";
+import { verifySession, SESSION_COOKIE_NAME } from "./lib/auth";
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  if (pathname.startsWith("/panel")) {
-    const token = req.cookies.get(getCookieName())?.value;
+  // Chronimy tylko /panel
+  if (!pathname.startsWith("/panel")) {
+    return NextResponse.next();
+  }
 
-    if (!token) {
-      const url = req.nextUrl.clone();
-      url.pathname = "/logowanie";
-      return NextResponse.redirect(url);
-    }
+  const token = req.cookies.get(SESSION_COOKIE_NAME)?.value;
+  const session = token ? await verifySession(token) : null;
 
-    const session = await verifySession(token);
-    if (!session) {
-      const url = req.nextUrl.clone();
-      url.pathname = "/logowanie";
-      return NextResponse.redirect(url);
-    }
+  if (!session) {
+    const url = req.nextUrl.clone();
+    url.pathname = "/login";
+    return NextResponse.redirect(url);
   }
 
   return NextResponse.next();

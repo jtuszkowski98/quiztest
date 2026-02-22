@@ -1,23 +1,39 @@
-import LogoutButton from "@/components/LogoutButton";
-import MeBar from "@/components/MeBar";
+import { redirect } from "next/navigation";
+import { getCurrentUser } from "../../lib/current-user";
+import LogoutButton from "../../components/LogoutButton";
 
-export default function Panel() {
+export default async function PanelPage() {
+  const user = await getCurrentUser();
+
+  // Middleware i tak chroni /panel, ale to jest drugi “pas bezpieczeństwa”
+  if (!user) {
+    redirect("/login");
+  }
+
   return (
-    <main className="max-w-6xl mx-auto px-6 py-24">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-blue-950">Panel użytkownika</h1>
-          <MeBar />
-        </div>
+    <section style={{ maxWidth: 720 }}>
+      <h1 style={{ fontSize: 28, marginBottom: 8 }}>Dashboard</h1>
+      <p style={{ marginBottom: 16 }}>
+        Zalogowany jako: <strong>{user.email}</strong>
+      </p>
 
-        <LogoutButton />
+      <div
+        style={{
+          padding: 16,
+          border: "1px solid #e5e7eb",
+          borderRadius: 12,
+          marginBottom: 16,
+        }}
+      >
+        <h2 style={{ fontSize: 18, marginBottom: 8 }}>Status konta</h2>
+        <ul style={{ margin: 0, paddingLeft: 18 }}>
+          <li>Konto aktywne ✅</li>
+          <li>Połączenie z bazą: Prisma + Neon ✅</li>
+          <li>Sesja: JWT w httpOnly cookie ✅</li>
+        </ul>
       </div>
 
-      <div className="mt-10 grid gap-6 md:grid-cols-3">
-        <div className="bg-white rounded-3xl p-8 shadow-xl border border-blue-100">Quizy</div>
-        <div className="bg-white rounded-3xl p-8 shadow-xl border border-blue-100">Klasy</div>
-        <div className="bg-white rounded-3xl p-8 shadow-xl border border-blue-100">Wyniki</div>
-      </div>
-    </main>
+      <LogoutButton />
+    </section>
   );
 }

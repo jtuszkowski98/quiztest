@@ -1,18 +1,15 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 export default function LogoutButton() {
-  const router = useRouter();
   const [loading, setLoading] = useState(false);
 
-  async function logout() {
-    setLoading(true);
+  async function handleLogout() {
     try {
+      setLoading(true);
       await fetch("/api/logout", { method: "POST" });
-      router.push("/");
-      router.refresh();
+      window.location.href = "/login";
     } finally {
       setLoading(false);
     }
@@ -20,11 +17,17 @@ export default function LogoutButton() {
 
   return (
     <button
-      onClick={logout}
+      onClick={handleLogout}
       disabled={loading}
-      className="px-4 py-2 rounded-xl border border-blue-200 bg-white hover:bg-blue-50 transition font-semibold text-blue-950 disabled:opacity-60"
+      style={{
+        padding: "10px 14px",
+        borderRadius: 10,
+        border: "1px solid #e5e7eb",
+        background: "white",
+        cursor: loading ? "not-allowed" : "pointer",
+      }}
     >
-      {loading ? "Wylogowywanie..." : "Wyloguj"}
+      {loading ? "Wylogowywanie..." : "Wyloguj się"}
     </button>
   );
 }

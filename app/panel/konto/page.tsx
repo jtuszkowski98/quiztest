@@ -30,7 +30,7 @@ export default async function KontoPage() {
           <div className="flex flex-col">
             <dt className="text-sm text-blue-950/60">Data utworzenia</dt>
             <dd className="text-lg font-semibold text-blue-950">
-              {new Date(user.createdAt).toLocaleString("pl-PL")}
+              {user.createdAt.toLocaleString("pl-PL")}
             </dd>
           </div>
         </dl>

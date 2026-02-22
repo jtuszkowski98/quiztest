@@ -29,13 +29,11 @@ export default function Header() {
     }
   }
 
-  // 1) Pierwsze załadowanie usera
   useEffect(() => {
     loadUser();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 2) KLUCZ: odśwież usera przy zmianie ścieżki (np. po login -> /panel)
   useEffect(() => {
     setLoading(true);
     loadUser();
@@ -69,6 +67,13 @@ export default function Header() {
                 className="px-4 py-2 rounded-xl bg-blue-950 text-white font-semibold hover:opacity-90 transition"
               >
                 Panel
+              </Link>
+
+              <Link
+                href="/panel/konto"
+                className="px-4 py-2 rounded-xl border-2 border-blue-500 text-blue-950 font-semibold hover:bg-blue-900 hover:text-white transition"
+              >
+                Konto
               </Link>
 
               <button

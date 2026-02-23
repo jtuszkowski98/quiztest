@@ -38,21 +38,34 @@ export default async function KlasyPage() {
 
       <section className="mt-8 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {groups.map((g) => (
-          <div key={g.id} className="bg-white rounded-3xl border border-blue-100 p-7 shadow-xl">
-            <h2 className="text-xl font-bold text-blue-950">{g.name}</h2>
+          <Link
+            key={g.id}
+            href={`/panel/klasy/${g.id}`}
+            className="group bg-white rounded-3xl border border-blue-100 p-7 shadow-xl hover:shadow-2xl transition"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <h2 className="text-xl font-bold text-blue-950 group-hover:underline">
+                {g.name}
+              </h2>
+              <span className="text-blue-950/50 group-hover:text-blue-950 transition">
+                →
+              </span>
+            </div>
+
             <p className="text-blue-950/70 mt-2">
               Liczba członków: <span className="font-semibold">{g._count.members}</span>
             </p>
+
             <p className="text-blue-950/60 text-sm mt-2">
               Utworzono: {new Date(g.createdAt).toLocaleString("pl-PL")}
             </p>
 
             <div className="mt-5">
-              <span className="text-xs px-3 py-1 rounded-full border border-orange-200 bg-orange-50 text-orange-800">
-                Szczegóły wkrótce
+              <span className="text-xs px-3 py-1 rounded-full border border-green-200 bg-green-50 text-green-800">
+                Otwórz szczegóły
               </span>
             </div>
-          </div>
+          </Link>
         ))}
 
         {groups.length === 0 ? (

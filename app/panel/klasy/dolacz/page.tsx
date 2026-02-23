@@ -8,7 +8,7 @@ export default function DolaczDoKlasyPage() {
   const sp = useSearchParams();
   const token = sp.get("token") ?? "";
 
-  const [status, setStatus] = useState<"idle" | "loading" | "ok" | "err">("idle");
+  const [status, setStatus] = useState<"loading" | "ok" | "err">("loading");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -20,12 +20,12 @@ export default function DolaczDoKlasyPage() {
       }
 
       try {
-        setStatus("loading");
         const res = await fetch("/api/groups/join", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ token }),
         });
+
         const data = await res.json().catch(() => null);
 
         if (!res.ok) {
@@ -52,6 +52,10 @@ export default function DolaczDoKlasyPage() {
 
       {status === "loading" ? (
         <p className="text-blue-950/70 mt-4">Trwa dołączanie...</p>
+      ) : null}
+
+      {status === "ok" ? (
+        <p className="text-blue-950/70 mt-4">Gotowe. Przenoszę do klasy…</p>
       ) : null}
 
       {status === "err" ? (

@@ -32,7 +32,6 @@ model User {
   role      UserRole @default(USER)
   createdAt DateTime @default(now())
 
-  // relacje
   ownedGroups Group[]       @relation("GroupOwner")
   memberships GroupMember[]
   quizzes     Quiz[]
@@ -48,6 +47,7 @@ model Group {
   owner     User     @relation("GroupOwner", fields: [ownerId], references: [id], onDelete: Cascade)
 
   members   GroupMember[]
+  invites   GroupInvite[]
   quizzes   Quiz[]
 
   createdAt DateTime @default(now())
@@ -71,6 +71,28 @@ model GroupMember {
   @@index([userId])
 }
 
+model GroupInvite {
+  id        String          @id @default(cuid())
+  groupId   String
+  role      GroupMemberRole @default(STUDENT)
+
+  // token do linku
+  token     String          @unique
+
+  // ograniczenia zaproszenia
+  maxUses   Int             @default(1)
+  usedCount Int             @default(0)
+  expiresAt DateTime?
+  revokedAt DateTime?
+
+  createdAt DateTime        @default(now())
+
+  group     Group           @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@index([groupId])
+  @@index([expiresAt])
+}
+
 model Quiz {
   id           String         @id @default(cuid())
   title        String
@@ -82,11 +104,9 @@ model Quiz {
   authorId     String
   author       User           @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
-  // target GROUP
   groupId      String?
   group        Group?         @relation(fields: [groupId], references: [id], onDelete: SetNull)
 
-  // target PRIVATE_LINK
   privateToken String?        @unique
 
   createdAt    DateTime       @default(now())

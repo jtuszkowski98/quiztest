@@ -12,9 +12,51 @@ async function getUserId() {
   return session?.sub ?? null;
 }
 
-function toRole(v: unknown) {
-  if (v === "STUDENT" || v === "TEACHER") return v;
+function parseRole(v: unknown): "STUDENT" | "TEACHER" {
+  if (v === "TEACHER") return "TEACHER";
   return "STUDENT";
+}
+
+function clampInt(v: unknown, min: number, max: number, fallback: number) {
+  const n = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(Math.max(Math.floor(n), min), max);
+}
+
+export async function GET(_: Request, ctx: { params: { groupId: string } }) {
+  const userId = await getUserId();
+  if (!userId) {
+    return NextResponse.json({ error: "Brak sesji. Zaloguj się ponownie." }, { status: 401 });
+  }
+
+  const groupId = ctx.params.groupId;
+
+  const member = await prisma.groupMember.findUnique({
+    where: { groupId_userId: { groupId, userId } },
+    select: { role: true },
+  });
+
+  if (!member || (member.role !== "OWNER" && member.role !== "TEACHER")) {
+    return NextResponse.json({ error: "Brak uprawnień." }, { status: 403 });
+  }
+
+  const invites = await prisma.groupInvite.findMany({
+    where: { groupId },
+    select: {
+      id: true,
+      token: true,
+      role: true,
+      maxUses: true,
+      usedCount: true,
+      expiresAt: true,
+      revokedAt: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+  });
+
+  return NextResponse.json({ invites }, { status: 200 });
 }
 
 export async function POST(req: Request, ctx: { params: { groupId: string } }) {
@@ -30,22 +72,18 @@ export async function POST(req: Request, ctx: { params: { groupId: string } }) {
     select: { role: true },
   });
 
-  // tylko OWNER/TEACHER może zapraszać
   if (!member || (member.role !== "OWNER" && member.role !== "TEACHER")) {
     return NextResponse.json({ error: "Brak uprawnień do zapraszania." }, { status: 403 });
   }
 
   const body = await req.json().catch(() => null);
 
-  const role = toRole(body?.role);
-  const maxUsesRaw = typeof body?.maxUses === "number" ? body.maxUses : 1;
-  const maxUses = Math.min(Math.max(maxUsesRaw, 1), 50); // 1..50
-
-  const expiresInDaysRaw = typeof body?.expiresInDays === "number" ? body.expiresInDays : 7;
-  const expiresInDays = Math.min(Math.max(expiresInDaysRaw, 1), 30); // 1..30
-  const expiresAt = new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000);
+  const role = parseRole(body?.role);
+  const maxUses = clampInt(body?.maxUses, 1, 50, 1);         // 1..50
+  const expiresInDays = clampInt(body?.expiresInDays, 1, 30, 7); // 1..30
 
   const token = crypto.randomBytes(24).toString("hex");
+  const expiresAt = new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000);
 
   const invite = await prisma.groupInvite.create({
     data: {

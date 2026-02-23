@@ -19,6 +19,7 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => null);
   const token = typeof body?.token === "string" ? body.token.trim() : "";
+
   if (!token) {
     return NextResponse.json({ error: "Brak tokenu zaproszenia." }, { status: 400 });
   }
@@ -37,7 +38,7 @@ export async function POST(req: Request) {
   });
 
   if (!invite) {
-    return NextResponse.json({ error: "Nieprawidłowe zaproszenie." }, { status: 404 });
+    return NextResponse.json({ error: "Nieprawidłowy link zaproszenia." }, { status: 404 });
   }
 
   if (invite.revokedAt) {
@@ -49,11 +50,10 @@ export async function POST(req: Request) {
   }
 
   if (invite.usedCount >= invite.maxUses) {
-    return NextResponse.json({ error: "Zaproszenie zostało już wykorzystane." }, { status: 410 });
+    return NextResponse.json({ error: "Limit użyć zaproszenia został wyczerpany." }, { status: 410 });
   }
 
   const result = await prisma.$transaction(async (tx) => {
-    // już jest w klasie?
     const existing = await tx.groupMember.findUnique({
       where: { groupId_userId: { groupId: invite.groupId, userId } },
       select: { id: true },
@@ -63,14 +63,14 @@ export async function POST(req: Request) {
       return { alreadyMember: true, groupId: invite.groupId };
     }
 
+    // bezpieczeństwo: nie da się dołączyć jako OWNER z invite
+    const role = invite.role === "OWNER" ? "STUDENT" : invite.role;
+
     await tx.groupMember.create({
-      data: {
-        groupId: invite.groupId,
-        userId,
-        role: invite.role === "OWNER" ? "STUDENT" : invite.role, // bezpieczeństwo
-      },
+      data: { groupId: invite.groupId, userId, role },
     });
 
+    // increment użyć
     await tx.groupInvite.update({
       where: { id: invite.id },
       data: { usedCount: { increment: 1 } },

@@ -76,10 +76,8 @@ model GroupInvite {
   groupId   String
   role      GroupMemberRole @default(STUDENT)
 
-  // token do linku
   token     String          @unique
 
-  // ograniczenia zaproszenia
   maxUses   Int             @default(1)
   usedCount Int             @default(0)
   expiresAt DateTime?

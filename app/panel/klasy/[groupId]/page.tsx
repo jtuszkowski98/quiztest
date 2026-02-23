@@ -1,15 +1,26 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
+import { redirect, notFound } from "next/navigation";
 import { getCurrentUser } from "../../../../lib/current-user";
 import { prisma } from "../../../../lib/prisma";
 import CreateInviteForm from "../../../../components/CreateInviteForm";
 
-export default async function KlasaDetailsPage({ params }: { params: { groupId: string } }) {
+type Props = {
+  params: { groupId?: string };
+};
+
+export default async function KlasaDetailsPage({ params }: Props) {
   const user = await getCurrentUser();
   if (!user) redirect("/logowanie");
 
+  const groupId = params?.groupId;
+
+  // Guard: jak param jest pusty, to nie robimy query z id=undefined
+  if (!groupId || typeof groupId !== "string") {
+    notFound();
+  }
+
   const group = await prisma.group.findUnique({
-    where: { id: params.groupId },
+    where: { id: groupId },
     select: {
       id: true,
       name: true,
@@ -27,24 +38,19 @@ export default async function KlasaDetailsPage({ params }: { params: { groupId: 
     },
   });
 
-  if (!group) {
-    redirect("/panel/klasy");
-  }
+  if (!group) redirect("/panel/klasy");
 
-  // czy user jest członkiem?
-  const isMember = group.members.some((m) => m.user.id === user.id);
-  if (!isMember) redirect("/panel/klasy");
+  const myMembership = group.members.find((m) => m.user.id === user.id);
+  if (!myMembership) redirect("/panel/klasy");
 
-  const myRole = group.members.find((m) => m.user.id === user.id)?.role;
+  const canInvite = myMembership.role === "OWNER" || myMembership.role === "TEACHER";
 
   return (
     <main className="max-w-6xl mx-auto px-6 py-10">
       <div className="flex items-start justify-between gap-6">
         <div>
           <h1 className="text-3xl font-extrabold text-blue-950">{group.name}</h1>
-          <p className="text-blue-950/70 mt-2">
-            Zarządzanie klasą i członkami.
-          </p>
+          <p className="text-blue-950/70 mt-2">Zarządzanie klasą i członkami.</p>
         </div>
 
         <Link href="/panel/klasy" className="text-blue-950/80 hover:text-blue-950 underline">
@@ -52,7 +58,7 @@ export default async function KlasaDetailsPage({ params }: { params: { groupId: 
         </Link>
       </div>
 
-      {(myRole === "OWNER" || myRole === "TEACHER") ? (
+      {canInvite ? (
         <section className="mt-8 bg-white rounded-3xl border border-blue-100 p-8 shadow-xl">
           <h2 className="text-xl font-bold text-blue-950">Zaproszenie do klasy</h2>
           <p className="text-blue-950/70 mt-2">
@@ -66,6 +72,7 @@ export default async function KlasaDetailsPage({ params }: { params: { groupId: 
 
       <section className="mt-8 bg-white rounded-3xl border border-blue-100 p-8 shadow-xl">
         <h2 className="text-xl font-bold text-blue-950">Członkowie</h2>
+
         <div className="mt-6 overflow-x-auto">
           <table className="w-full text-left">
             <thead>

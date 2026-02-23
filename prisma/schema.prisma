@@ -7,10 +7,92 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum GroupMemberRole {
+  OWNER
+  TEACHER
+  STUDENT
+}
+
+enum QuizVisibility {
+  PUBLIC
+  GROUP
+  PRIVATE_LINK
+}
+
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
   password  String
   name      String?
+  role      UserRole @default(USER)
   createdAt DateTime @default(now())
+
+  // relacje
+  ownedGroups Group[]       @relation("GroupOwner")
+  memberships GroupMember[]
+  quizzes     Quiz[]
+
+  @@index([role])
+}
+
+model Group {
+  id        String   @id @default(cuid())
+  name      String
+
+  ownerId   String
+  owner     User     @relation("GroupOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  members   GroupMember[]
+  quizzes   Quiz[]
+
+  createdAt DateTime @default(now())
+
+  @@index([ownerId])
+}
+
+model GroupMember {
+  id        String          @id @default(cuid())
+  groupId   String
+  userId    String
+  role      GroupMemberRole @default(STUDENT)
+
+  group     Group           @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([groupId, userId])
+  @@index([groupId])
+  @@index([userId])
+}
+
+model Quiz {
+  id           String         @id @default(cuid())
+  title        String
+  description  String?
+  isPublished  Boolean        @default(false)
+
+  visibility   QuizVisibility @default(PRIVATE_LINK)
+
+  authorId     String
+  author       User           @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  // target GROUP
+  groupId      String?
+  group        Group?         @relation(fields: [groupId], references: [id], onDelete: SetNull)
+
+  // target PRIVATE_LINK
+  privateToken String?        @unique
+
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@index([authorId])
+  @@index([visibility])
+  @@index([groupId])
 }

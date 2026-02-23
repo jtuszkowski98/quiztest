@@ -4,18 +4,21 @@ import { getCurrentUser } from "../../../../lib/current-user";
 import { prisma } from "../../../../lib/prisma";
 import CreateInviteForm from "../../../../components/CreateInviteForm";
 
-type Props = {
-  params: { groupId?: string };
-};
+type Params = { groupId?: string };
 
-export default async function KlasaDetailsPage({ params }: Props) {
+export default async function KlasaDetailsPage({
+  params,
+}: {
+  params: Params | Promise<Params>;
+}) {
   const user = await getCurrentUser();
   if (!user) redirect("/logowanie");
 
-  const groupId = params?.groupId;
+  // ✅ działa niezależnie od tego, czy params jest obiektem czy Promise
+  const resolvedParams = await Promise.resolve(params);
+  const groupId = resolvedParams?.groupId;
 
-  // Guard: jak param jest pusty, to nie robimy query z id=undefined
-  if (!groupId || typeof groupId !== "string") {
+  if (!groupId) {
     notFound();
   }
 

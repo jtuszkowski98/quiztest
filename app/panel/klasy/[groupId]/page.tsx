@@ -1,144 +1,187 @@
-import Link from "next/link";
+import { cookies } from "next/headers";
 import { redirect, notFound } from "next/navigation";
-import { getCurrentUser } from "../../../../lib/current-user";
-import { prisma } from "../../../../lib/prisma";
-import CreateInviteForm from "../../../../components/CreateInviteForm";
-import CopyButton from "../../../../components/CopyButton";
+import Link from "next/link";
+import { prisma } from "@/lib/prisma";
+import { SESSION_COOKIE_NAME, verifySession } from "@/lib/auth";
 
-type Params = { groupId?: string };
+import MembersList from "@/components/groups/MembersList";
+// opcjonalnie
+import CopyButton from "@/components/CopyButton";
 
-export default async function KlasaDetailsPage({
-  params,
+type PageProps = {
+  params: Promise<{ groupId: string }>;
+};
+
+type DbRole = "OWNER" | "TEACHER" | "STUDENT";
+type UiRole = "TEACHER" | "STUDENT";
+
+function toUiRole(role: DbRole): UiRole {
+  return role === "STUDENT" ? "STUDENT" : "TEACHER";
+}
+
+function RolePill({ role }: { role: UiRole }) {
+  const base =
+    "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium border";
+  if (role === "TEACHER")
+    return (
+      <span className={`${base} border-blue-200 bg-blue-50 text-blue-700`}>
+        🧑‍🏫 NAUCZYCIEL
+      </span>
+    );
+  return (
+    <span className={`${base} border-gray-200 bg-gray-50 text-gray-700`}>
+      🎓 UCZEŃ
+    </span>
+  );
+}
+
+function StatTile({
+  label,
+  value,
+  hint,
+  icon,
 }: {
-  params: Params | Promise<Params>;
+  label: string;
+  value: string;
+  hint?: string;
+  icon: string;
 }) {
-  const user = await getCurrentUser();
-  if (!user) redirect("/logowanie");
+  return (
+    <div className="rounded-2xl border bg-white shadow-sm p-4">
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-xs font-medium text-gray-500">{label}</p>
+          <p className="mt-1 text-2xl font-semibold tracking-tight text-gray-900">
+            {value}
+          </p>
+          {hint ? <p className="mt-1 text-xs text-gray-500">{hint}</p> : null}
+        </div>
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl border bg-gray-50 text-sm">
+          {icon}
+        </div>
+      </div>
+    </div>
+  );
+}
 
-  // Bezpieczna obsługa params (Next może przekazać Promise)
-  const resolvedParams = await Promise.resolve(params);
-  const groupId = resolvedParams?.groupId;
+export default async function GroupDetailsPage({ params }: PageProps) {
+  const { groupId } = await params;
 
-  if (!groupId) notFound();
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+  if (!token) redirect("/login");
 
-  const group = await prisma.group.findUnique({
-    where: { id: groupId },
-    select: {
-      id: true,
-      name: true,
-      ownerId: true,
-      createdAt: true,
-      members: {
-        select: {
-          id: true,
-          role: true,
-          createdAt: true,
-          user: {
-            select: {
-              id: true,
-              email: true,
-              name: true,
-            },
-          },
-        },
-        orderBy: { createdAt: "asc" },
-      },
-    },
+  const session = await verifySession(token);
+  if (!session) redirect("/login");
+
+  const userId = session.sub;
+
+  const membership = await prisma.groupMember.findFirst({
+    where: { groupId, userId },
+    include: { group: true },
   });
 
-  if (!group) redirect("/panel/klasy");
+  if (!membership) notFound();
 
-  const myMembership = group.members.find((m) => m.user.id === user.id);
-  if (!myMembership) redirect("/panel/klasy");
+  const group = membership.group;
 
-  const canInvite =
-    myMembership.role === "OWNER" || myMembership.role === "TEACHER";
+  const dbMembers = await prisma.groupMember.findMany({
+    where: { groupId },
+    include: { user: { select: { id: true, email: true } } },
+    orderBy: { createdAt: "asc" },
+  });
+
+  const members = dbMembers.map((m) => ({
+    id: m.id, // GroupMember.id
+    userId: m.user.id,
+    email: m.user.email,
+    role: m.role as DbRole,
+  }));
+
+  const teachers = dbMembers.filter((m) => m.role !== "STUDENT").length; // OWNER liczymy jako teacher
+  const students = dbMembers.filter((m) => m.role === "STUDENT").length;
 
   return (
-    <main className="max-w-6xl mx-auto px-6 py-10">
-      <div className="flex items-start justify-between gap-6">
-        <div>
-          <h1 className="text-3xl font-extrabold text-blue-950">
-            {group.name}
-          </h1>
+    <div className="min-h-[calc(100vh-64px)] bg-gradient-to-b from-gray-50 to-white">
+      <div className="max-w-6xl mx-auto px-4 py-10 space-y-8">
+        <div className="rounded-[28px] border bg-white shadow-sm overflow-hidden">
+          <div className="p-6 sm:p-8 bg-gradient-to-r from-indigo-50 via-white to-emerald-50">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-3">
+                  <h1 className="text-3xl font-semibold tracking-tight text-gray-900">
+                    {group.name}
+                  </h1>
+                  <RolePill role={toUiRole(membership.role as DbRole)} />
+                </div>
 
-          {/* Dyskretne ID klasy */}
-          <div className="mt-2 flex items-center text-sm text-blue-950/50 font-mono">
-            <span className="mr-1">id:</span>
-            <span>{group.id}</span>
-            <CopyButton value={group.id} />
-          </div>
+                <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
+                  <span className="rounded-full border bg-white/60 px-2.5 py-1">
+                    ID klasy
+                  </span>
+                  <span className="font-mono text-xs sm:text-sm bg-white/70 border rounded-xl px-3 py-1.5">
+                    {group.id}
+                  </span>
+                  <CopyButton value={group.id} />
+                </div>
 
-          <p className="text-blue-950/70 mt-3">
-            Zarządzanie klasą i członkami.
-          </p>
-        </div>
+                {group.description ? (
+                  <p className="text-sm text-gray-700 max-w-2xl">
+                    {group.description}
+                  </p>
+                ) : (
+                  <p className="text-sm text-gray-600">
+                    Brak opisu. Dodasz go w ustawieniach klasy.
+                  </p>
+                )}
+              </div>
 
-        <Link
-          href="/panel/klasy"
-          className="text-blue-950/80 hover:text-blue-950 underline"
-        >
-          ← Wróć do klas
-        </Link>
-      </div>
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center rounded-2xl border bg-white/70 px-3 py-2 text-sm text-gray-800">
+                  👥 <span className="ml-2 font-semibold">{dbMembers.length}</span>
+                  <span className="ml-1 text-gray-500">członków</span>
+                </span>
 
-      {canInvite && (
-        <section className="mt-8 bg-white rounded-3xl border border-blue-100 p-8 shadow-xl">
-          <h2 className="text-xl font-bold text-blue-950">
-            Zaproszenie do klasy
-          </h2>
-          <p className="text-blue-950/70 mt-2">
-            Wygeneruj link zaproszenia. Możesz ustawić rolę i limit użyć.
-          </p>
-
-          <div className="mt-6">
-            <CreateInviteForm groupId={group.id} />
-          </div>
-        </section>
-      )}
-
-      <section className="mt-8 bg-white rounded-3xl border border-blue-100 p-8 shadow-xl">
-        <h2 className="text-xl font-bold text-blue-950">
-          Członkowie
-        </h2>
-
-        <div className="mt-6 overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="text-sm text-blue-950/60 border-b">
-                <th className="py-2">Użytkownik</th>
-                <th className="py-2">Rola</th>
-                <th className="py-2">Dołączył</th>
-              </tr>
-            </thead>
-            <tbody>
-              {group.members.map((m) => (
-                <tr
-                  key={m.id}
-                  className="border-b last:border-b-0"
+                <Link
+                  href={`/panel/klasy/${groupId}/ustawienia`}
+                  className="inline-flex items-center justify-center rounded-2xl border bg-white/70 px-3 py-2 text-sm text-gray-800 hover:bg-white transition"
+                  aria-label="Ustawienia klasy"
+                  title="Ustawienia klasy"
                 >
-                  <td className="py-3">
-                    <div className="font-semibold text-blue-950">
-                      {m.user.name ?? "—"}
-                    </div>
-                    <div className="text-sm text-blue-950/70">
-                      {m.user.email}
-                    </div>
-                  </td>
+                  ⚙️
+                </Link>
+              </div>
+            </div>
+          </div>
 
-                  <td className="py-3 font-semibold text-blue-950">
-                    {m.role}
-                  </td>
-
-                  <td className="py-3 text-blue-950/70">
-                    {new Date(m.createdAt).toLocaleString("pl-PL")}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="p-6 sm:p-8 pt-0 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <StatTile label="Nauczyciele" value={String(teachers)} hint="Założyciel też tutaj" icon="🧑‍🏫" />
+            <StatTile label="Uczniowie" value={String(students)} hint="Dostęp do quizów" icon="🎓" />
+          </div>
         </div>
-      </section>
-    </main>
+
+        <div className="rounded-2xl border bg-white shadow-sm">
+          <div className="p-5 sm:p-6 flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Członkowie</h2>
+              <p className="text-sm text-gray-600 mt-1">
+                Nauczyciel może usuwać tylko uczniów. Nauczyciela może usunąć tylko założyciel.
+              </p>
+            </div>
+          </div>
+
+          <div className="px-5 sm:px-6 pb-6">
+            <MembersList
+              groupId={groupId}
+              actorUserId={userId}
+              actorRole={membership.role as DbRole}
+              members={members}
+            />
+          </div>
+        </div>
+
+        <div className="text-xs text-gray-500 px-1">QuizTest • Panel klasy</div>
+      </div>
+    </div>
   );
 }

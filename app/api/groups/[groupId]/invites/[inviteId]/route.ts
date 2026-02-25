@@ -22,7 +22,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const session = verifySession(token);
+    const session = await verifySession(token);
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

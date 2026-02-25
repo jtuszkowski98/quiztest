@@ -1,43 +1,38 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { prisma } from "@/lib/prisma";
-import { verifySession } from "@/lib/auth";
+import { prisma } from "../../../../../../lib/prisma";
+import { SESSION_COOKIE_NAME, verifySession } from "../../../../../../lib/auth";
 
-type Params = {
-  groupId: string;
-  inviteId: string;
-};
+type Ctx = { params: Promise<{ groupId: string; inviteId: string }> };
 
-export async function DELETE(
-  _req: Request,
-  ctx: { params: Promise<Params> }
-) {
+async function getUserId() {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+  if (!token) return null;
+
+  const session = await verifySession(token);
+  return session?.sub ?? null;
+}
+
+export async function DELETE(_: Request, ctx: Ctx) {
   try {
+    const userId = await getUserId();
+    if (!userId) {
+      return NextResponse.json(
+        { error: "Brak sesji. Zaloguj się ponownie." },
+        { status: 401 }
+      );
+    }
+
     const { groupId, inviteId } = await ctx.params;
 
-    const cookieStore = await cookies();
-    const token = cookieStore.get("token")?.value;
-
-    if (!token) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const session = await verifySession(token);
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const membership = await prisma.groupMember.findFirst({
-      where: {
-        groupId,
-        userId: session.id,
-        role: { in: ["OWNER", "TEACHER"] },
-      },
-      select: { id: true },
+    const member = await prisma.groupMember.findFirst({
+      where: { groupId, userId },
+      select: { role: true },
     });
 
-    if (!membership) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (!member || (member.role !== "OWNER" && member.role !== "TEACHER")) {
+      return NextResponse.json({ error: "Brak uprawnień." }, { status: 403 });
     }
 
     const invite = await prisma.groupInvite.findUnique({
@@ -46,14 +41,11 @@ export async function DELETE(
     });
 
     if (!invite || invite.groupId !== groupId) {
-      return NextResponse.json({ error: "Invite not found" }, { status: 404 });
+      return NextResponse.json({ error: "Nie znaleziono zaproszenia." }, { status: 404 });
     }
 
     if (invite.revokedAt) {
-      return NextResponse.json(
-        { error: "Invite already revoked" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Zaproszenie jest już unieważnione." }, { status: 400 });
     }
 
     await prisma.groupInvite.update({
@@ -61,11 +53,11 @@ export async function DELETE(
       data: { revokedAt: new Date() },
     });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true }, { status: 200 });
   } catch (err) {
-    console.error(err);
+    console.error("DELETE /api/groups/[groupId]/invites/[inviteId] error:", err);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Wystąpił błąd serwera." },
       { status: 500 }
     );
   }

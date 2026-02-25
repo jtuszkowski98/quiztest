@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
-import { verifyJwt } from "@/lib/auth";
+import { verifySession } from "@/lib/auth";
 
 type Params = {
   groupId: string;
@@ -22,19 +22,18 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const payload = verifyJwt(token);
-    if (!payload) {
+    const session = verifySession(token);
+    if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const membership = await prisma.groupMember.findFirst({
       where: {
         groupId,
-        userId: payload.userId,
-        role: {
-          in: ["OWNER", "TEACHER"],
-        },
+        userId: session.userId,
+        role: { in: ["OWNER", "TEACHER"] },
       },
+      select: { id: true },
     });
 
     if (!membership) {
@@ -43,6 +42,7 @@ export async function DELETE(
 
     const invite = await prisma.groupInvite.findUnique({
       where: { id: inviteId },
+      select: { id: true, groupId: true, revokedAt: true },
     });
 
     if (!invite || invite.groupId !== groupId) {
@@ -58,9 +58,7 @@ export async function DELETE(
 
     await prisma.groupInvite.update({
       where: { id: inviteId },
-      data: {
-        revokedAt: new Date(),
-      },
+      data: { revokedAt: new Date() },
     });
 
     return NextResponse.json({ success: true });

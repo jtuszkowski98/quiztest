@@ -1,8 +1,23 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import crypto from "crypto";
-import { prisma } from "../../../../../lib/prisma";
-import { SESSION_COOKIE_NAME, verifySession } from "../../../../../lib/auth";
+import { prisma } from "../../../../../../lib/prisma";
+import { SESSION_COOKIE_NAME, verifySession } from "../../../../../../lib/auth";
+
+type Ctx = { params: Promise<{ groupId: string }> };
+
+function computeStatus(invite: {
+  revokedAt: Date | null;
+  expiresAt: Date;
+  usedCount: number;
+  maxUses: number;
+}) {
+  const now = new Date();
+
+  if (invite.revokedAt) return "REVOKED";
+  if (invite.expiresAt <= now) return "EXPIRED";
+  if (invite.usedCount >= invite.maxUses) return "USED_UP";
+  return "ACTIVE";
+}
 
 async function getUserId() {
   const cookieStore = await cookies();
@@ -13,26 +28,11 @@ async function getUserId() {
   return session?.sub ?? null;
 }
 
-function parseRole(v: unknown): "STUDENT" | "TEACHER" {
-  return v === "TEACHER" ? "TEACHER" : "STUDENT";
-}
-
-function clampInt(v: unknown, min: number, max: number, fallback: number) {
-  const n = typeof v === "number" ? v : Number(v);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.min(Math.max(Math.floor(n), min), max);
-}
-
-type Ctx = { params: Promise<{ groupId: string }> };
-
 export async function GET(_: Request, ctx: Ctx) {
   try {
     const userId = await getUserId();
     if (!userId) {
-      return NextResponse.json(
-        { error: "Brak sesji. Zaloguj się ponownie." },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { groupId } = await ctx.params;
@@ -43,92 +43,24 @@ export async function GET(_: Request, ctx: Ctx) {
     });
 
     if (!member || (member.role !== "OWNER" && member.role !== "TEACHER")) {
-      return NextResponse.json({ error: "Brak uprawnień." }, { status: 403 });
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const invites = await prisma.groupInvite.findMany({
       where: { groupId },
-      select: {
-        id: true,
-        token: true,
-        role: true,
-        maxUses: true,
-        usedCount: true,
-        expiresAt: true,
-        revokedAt: true,
-        createdAt: true,
-      },
       orderBy: { createdAt: "desc" },
-      take: 50,
     });
 
-    return NextResponse.json({ invites }, { status: 200 });
+    const mapped = invites.map((invite) => ({
+      ...invite,
+      status: computeStatus(invite),
+    }));
+
+    return NextResponse.json(mapped);
   } catch (err) {
-    console.error("GET /api/groups/[groupId]/invites error:", err);
+    console.error("GET invites error:", err);
     return NextResponse.json(
-      { error: "Wystąpił błąd serwera." },
-      { status: 500 }
-    );
-  }
-}
-
-export async function POST(req: Request, ctx: Ctx) {
-  try {
-    const userId = await getUserId();
-    if (!userId) {
-      return NextResponse.json(
-        { error: "Brak sesji. Zaloguj się ponownie." },
-        { status: 401 }
-      );
-    }
-
-    const { groupId } = await ctx.params;
-
-    const member = await prisma.groupMember.findFirst({
-      where: { groupId, userId },
-      select: { role: true },
-    });
-
-    if (!member || (member.role !== "OWNER" && member.role !== "TEACHER")) {
-      return NextResponse.json(
-        { error: "Brak uprawnień do zapraszania." },
-        { status: 403 }
-      );
-    }
-
-    const body = await req.json().catch(() => null);
-
-    const role = parseRole(body?.role);
-    const maxUses = clampInt(body?.maxUses, 1, 50, 1); // 1..50
-    const expiresInDays = clampInt(body?.expiresInDays, 1, 30, 7); // 1..30
-
-    const token = crypto.randomBytes(24).toString("hex");
-    const expiresAt = new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000);
-
-    const invite = await prisma.groupInvite.create({
-      data: {
-        groupId,
-        token,
-        role,
-        maxUses,
-        expiresAt,
-      },
-      select: {
-        id: true,
-        token: true,
-        role: true,
-        maxUses: true,
-        usedCount: true,
-        expiresAt: true,
-        createdAt: true,
-      },
-    });
-
-    return NextResponse.json({ invite }, { status: 201 });
-  } catch (err) {
-    console.error("POST /api/groups/[groupId]/invites error:", err);
-    return NextResponse.json(
-      { error: "Wystąpił błąd serwera podczas tworzenia zaproszenia." },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }

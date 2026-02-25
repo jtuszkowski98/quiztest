@@ -30,7 +30,7 @@ export async function DELETE(
     const membership = await prisma.groupMember.findFirst({
       where: {
         groupId,
-        userId: session.userId,
+        userId: session.id,
         role: { in: ["OWNER", "TEACHER"] },
       },
       select: { id: true },
